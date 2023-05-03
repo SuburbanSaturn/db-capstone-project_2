@@ -235,9 +235,179 @@ ROLLBACK;
 -- COMMIT;
 
 
+SELECT * FROM Booking;
+
+-- alter table for Booking
+
+ALTER TABLE Booking ADD COLUMN TableNo INT
+
+ALTER TABLE Booking ADD COLUMN TableStatus VARCHAR(20);
+
+
+UPDATE Booking
+SET TableNo = CASE BookingID
+	WHEN 1 THEN 5
+	WHEN 2 THEN 3
+    WHEN 3 THEN 2
+    WHEN 4 THEN 1
+    END
+WHERE BookingID IN(1,2,3,4)
+
+
+-- Task 2: For Littlemon Booking SPROC
+-- DROP PROCEDURE IF EXISTS CheckingBooking;
+DELIMITER $$
+
+CREATE PROCEDURE CheckingBooking(IN booking_date DATE, IN table_number INT)
+BEGIN
+    DECLARE table_status VARCHAR(20);
+    
+    SELECT IF(COUNT(*) > 0, 'Unavailable', 'Available') INTO table_status 
+    FROM Booking
+    WHERE TableNo = table_number AND BookingSlot = booking_date;
+    
+    SELECT CONCAT('Table ', table_number, ' is ', table_status, ' on ', booking_date) AS Result;
+END $$
+
+DELIMITER ;
+
+
+-- checking the output reflects META's output on Learning Module
+SELECT 
+	BookingID,
+    DATE(BookingSlot),
+    TableNo,
+    CustomerID
+FROM
+	Booking;
+    
+-- Calling the Booking 
+Call CheckingBooking("2023-05-01", 5); -- should be unavailable
+-- CALL CheckingBooking("2023-06-01", 5); -- should be available
+
+
+-- Task 3: Create a sproc with valid input
+-- DROP PROCEDURE AddValidBooking;
+DELIMITER $$
+
+CREATE PROCEDURE AddValidBooking(IN bookingDate DATE, IN tableNumber INT, OUT message VARCHAR(255))
+BEGIN
+  DECLARE existingBooking INT;
+
+  START TRANSACTION;
+
+  SELECT COUNT(*)
+  INTO existingBooking
+  FROM Booking
+  WHERE BookingSlot = bookingDate AND TableNo = tableNumber;
+
+  IF existingBooking = 0 THEN
+    INSERT INTO Booking (BookingSlot, TableNo)
+    VALUES (bookingDate, tableNumber);
+    SET message = 'Booking successful.';
+  ELSE
+    SET message = 'Booking declined. The table is already booked on the specified date.';
+  END IF;
+
+  COMMIT;
+
+END $$
+DELIMITER ;
+
+
+-- call the procedure
+SET @outputMessage = '';
+CALL AddValidBooking('2023-05-01', 5, @outputMessage);
+SELECT @outputMessage;
+
+-- Exercise: Create SQL queries to add and update bookings
+-- Add Booking
+DELIMITER $$
+CREATE PROCEDURE AddBooking(
+    IN p_BookingID INT,
+    IN p_CustomerID INT,
+    IN p_BookingDate DATE,
+    IN p_TableNo INT
+)
+BEGIN
+    -- Check if the CustomerID exists in the Customer table
+    IF NOT EXISTS (SELECT 1 FROM Customer WHERE CustomerID = p_CustomerID) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'CustomerID does not exist in the Customer table';
+    ELSE
+        -- Insert the new booking record into the Booking table
+        INSERT INTO Booking (BookingID, BookingSlot, CustomerID, TableNo)
+        VALUES (p_BookingID, p_BookingDate, p_CustomerID, p_TableNo);
+    END IF;
+END $$
+
+DELIMITER ;
+
+-- call sproc
+CALL AddBooking(11, 9, '2023-05-10', 5);
+
+-- view results
+SELECT * FROM Booking;
+
+
+-- Task 2: Create sproc for Updating Booking table
+DELIMITER $$
+
+CREATE PROCEDURE UpdateBooking(IN booking_id INT, IN booking_date DATE)
+BEGIN 
+	UPDATE Booking 
+    SET BookingSlot = booking_date 
+    WHERE BookingID = booking_id;
+END $$
+
+DELIMITER ; 
+
+-- call sproc
+CALL UpdateBooking(6, "2023-12-16")
+
+-- check bookings for updates
+SELECT * FROM Booking;
+
+-- create a new procedure called CancelBooking that they can use to cancel or remove a booking.
+-- The procedure should have one input parameter in the form of booking id. 
+-- You must also write a DELETE statement inside the procedure. 
+DROP PROCEDURE CancelBooking
+DELIMITER $$
+
+CREATE PROCEDURE CancelBooking(IN bookingID INT, OUT message VARCHAR(255))
+BEGIN
+  DECLARE bookingDeleted INT;
+
+  SET SQL_SAFE_UPDATES = 0;
+  START TRANSACTION;
+  
+  -- Delete related rows in the referencing table
+  DELETE FROM Customer
+  WHERE BookingID = bookingID;
+
+  -- Delete booking
+  DELETE FROM Booking
+  WHERE BookingID = bookingID;
+
+  SET bookingDeleted = ROW_COUNT();
+
+  IF bookingDeleted = 1 THEN
+    SET message = CONCAT(bookingID, ' has been cancelled.');
+  ELSE
+    SET message = CONCAT('No booking found with BookingID: ', bookingID, '.');
+  END IF;
+
+  COMMIT;
+  SET SQL_SAFE_UPDATES = 1;
+  
+END $$
+
+DELIMITER ;
 
 
 
-
-
+-- CAll the sproc and it 
+SET @message = '';
+CALL CancelBooking(11, @message);
+SELECT @message;
 
